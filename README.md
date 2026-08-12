@@ -50,6 +50,26 @@ go run ./cmd/server   # reads weights/stories15M.bin + weights/tokenizer.bin
 # open http://localhost:8080
 ```
 
+Live at **[inferlab-demo.onrender.com](https://inferlab-demo.onrender.com)**.
+The benchmark panel's numbers below are real measurements from that free-tier
+instance (0.1 shared CPU, 512MB RAM) — not estimates:
+
+| Configuration | Tokens/sec | vs. no-cache |
+|---|---|---|
+| No cache (fp32) | 1.2 | — baseline |
+| KV cache (fp32) | 6.8 | ~5.6x |
+| KV cache + int8 | 6.7 | ~5.5x |
+| 3 sequential (fp32) | 8.6 aggregate | — |
+| 3 batched (fp32) | 10.2 aggregate | ~19% over sequential |
+
+Two things worth noting in these real numbers, not the ones a hand-wavy
+writeup would predict: the KV cache's win is *larger* on this constrained
+free-tier CPU than it was in local development (recomputation cost dominates
+even harder when every FLOP is scarce), and int8 quantization landed at
+rough parity with fp32 rather than clearly ahead of *or* behind it here —
+consistent with "no SIMD int8 path" being the deciding factor rather than
+raw CPU speed (see Design decisions below, and `INTERVIEW_QA.md` Q6).
+
 For local development, `dev-weights/` (gitignored) holds a local copy;
 point the server at it with `CHECKPOINT_PATH`/`TOKENIZER_PATH`:
 
@@ -117,18 +137,23 @@ vocabulary and `dim=288`, the embedding table alone is roughly 9.2M of the
 model's ~15M parameters. Quantizing only the matmul weights would miss most
 of the actual memory win.
 
-**Quantization measurably shrinks memory but was *not* faster in this
-project's own local benchmark — and that's an honest, expected result, not
-a bug.** `QuantMatMul` does a scalar `int8 → float32` conversion and
+**Quantization measurably shrinks memory but was *not* clearly faster in
+this project's own measurements — and that's an honest, expected result,
+not a bug.** `QuantMatMul` does a scalar `int8 → float32` conversion and
 multiply per element, with no SIMD int8 dot-product instructions (the kind
-real hardware support via AVX-VNNI or ARM NEON's dot-product extensions).
+real hardware supports via AVX-VNNI or ARM NEON's dot-product extensions).
 Without that hardware path, each quantized multiply-add costs *more* than
 the plain fp32 version, and the memory-bandwidth savings only pay for
 themselves when the workload is actually bandwidth-bound rather than
-compute-bound — which a ~60MB model largely resident in a modern CPU's
-cache may not be. The benchmark panel reports whatever the real hardware
-measures rather than a hand-waved "quantization is always faster" claim;
-see `INTERVIEW_QA.md` for the deeper version of this trade-off.
+compute-bound. Measured on the live Render free-tier deploy (0.1 shared
+CPU), int8 landed at rough parity with fp32 (6.7 vs 6.8 tok/s) rather than
+clearly ahead or behind; measured locally on a faster, less contended dev
+machine, int8 came out slower (13.3 vs 17.7 tok/s) — on both, the compute
+overhead is real and visible, it just trades off against bandwidth
+pressure differently depending on the hardware. The benchmark panel reports
+whatever the real hardware measures rather than a hand-waved "quantization
+is always faster" claim; see `INTERVIEW_QA.md` for the deeper version of
+this trade-off.
 
 **Model weights are fetched at build time, never committed** — see "Model
 weights" above.
