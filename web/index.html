@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>inferlab — live demo</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --panel: #12161f;
+    --border: #232936;
+    --text: #e6e9ef;
+    --muted: #8b93a3;
+    --accent: #5b8def;
+    --good: #3ecf8e;
+    --bad: #e0576b;
+    --warn: #e0b357;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html[data-lang="ja"] .en { display: none; }
+  html:not([data-lang="ja"]) .ja { display: none; }
+  body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; }
+  header { padding: 20px clamp(16px, 4vw, 40px) 14px; border-bottom: 1px solid var(--border); }
+  header h1 { margin: 0 0 4px; font-size: 1.35rem; letter-spacing: -0.01em; }
+  header h1 code { color: var(--accent); }
+  header .top-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  header .lang-switch { font-size: 0.85rem; }
+  header .lang-switch button {
+    background: transparent; border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 4px 10px; font-size: 0.8rem; cursor: pointer;
+  }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 0.88rem; max-width: 84ch; }
+  header a { color: var(--accent); }
+  main {
+    padding: 18px clamp(16px, 4vw, 40px) 40px;
+    display: grid;
+    grid-template-columns: minmax(280px, 380px) 1fr;
+    gap: 18px;
+    align-items: start;
+  }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .panel + .panel { margin-top: 14px; }
+  .panel h2 { margin: 0 0 10px; font-size: 0.82rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .field { margin-bottom: 12px; }
+  .field label { display: flex; justify-content: space-between; font-size: 0.82rem; color: var(--text); margin-bottom: 4px; }
+  .field label .val { color: var(--accent); font-variant-numeric: tabular-nums; }
+  .field input[type="range"] { width: 100%; accent-color: var(--accent); }
+  .field textarea, .field input[type="text"] {
+    width: 100%; background: #0d1017; color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px; font-size: 0.85rem; font-family: inherit; resize: vertical;
+  }
+  .field.checkbox label { display: flex; align-items: center; gap: 8px; justify-content: flex-start; }
+  .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  button.primary, button.secondary {
+    border-radius: 6px; padding: 8px 14px; font-size: 0.85rem; font-weight: 600; cursor: pointer; border: none;
+  }
+  button.primary { background: var(--accent); color: #04101f; }
+  button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.primary:hover:not(:disabled), button.secondary:hover:not(:disabled) { filter: brightness(1.1); }
+  .hint { color: var(--muted); font-size: 0.76rem; margin-top: 8px; line-height: 1.5; }
+  .output {
+    background: #0d1017; border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+    min-height: 140px; font-size: 0.92rem; line-height: 1.6; white-space: pre-wrap;
+  }
+  .output .cursor { display: inline-block; width: 7px; height: 1em; background: var(--accent); vertical-align: text-bottom; animation: blink 1s step-start infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .status-line { display: flex; justify-content: space-between; margin-top: 8px; font-size: 0.76rem; color: var(--muted); flex-wrap: wrap; gap: 6px; }
+  .bench-row { margin-bottom: 14px; }
+  .bench-row .bench-label { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 4px; }
+  .bench-row .bench-label .num { color: var(--accent); font-variant-numeric: tabular-nums; }
+  .bar-track { background: #0d1017; border: 1px solid var(--border); border-radius: 6px; height: 20px; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--accent); border-radius: 5px 0 0 5px; transition: width 0.4s ease; }
+  .bar-fill.good { background: var(--good); }
+  .mem-bars { display: flex; gap: 16px; margin-top: 6px; }
+  .mem-bars .mem-col { flex: 1; }
+  footer { padding: 20px clamp(16px, 4vw, 40px) 40px; color: var(--muted); font-size: 0.78rem; }
+  footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="top-row">
+    <h1><code>inferlab</code> <span class="en">— LLM inference engine, from scratch</span><span class="ja">— LLM推論エンジン自作</span></h1>
+    <div class="lang-switch">
+      <button id="langToggle" type="button"><span class="en">日本語</span><span class="ja">English</span></button>
+    </div>
+  </div>
+  <p class="en">A from-scratch transformer inference engine in pure Go: the forward pass, a KV cache, int8 weight-only quantization, and decode-only continuous batching, all implemented without any ML library. Generate text live below, then run the benchmark to see exactly what each optimization buys — and costs.</p>
+  <p class="ja">Go言語のみでゼロから実装したTransformer推論エンジン（外部MLライブラリ不使用）。フォワードパス・KVキャッシュ・int8量子化・デコード時のみのcontinuous batchingを実装。下でテキスト生成を試し、ベンチマークで各最適化が実際にどれだけ効くのか（そして何を犠牲にするのか）を確認できます。</p>
+</header>
+
+<main>
+  <div>
+    <div class="panel">
+      <h2><span class="en">Generate</span><span class="ja">テキスト生成</span></h2>
+      <div class="field">
+        <label><span class="en">Prompt</span><span class="ja">プロンプト</span></label>
+        <textarea id="prompt" rows="2">Once upon a time</textarea>
+      </div>
+      <div class="field">
+        <label><span class="en">Max new tokens</span><span class="ja">生成トークン数</span> <span class="val" id="valMaxTokens">30</span></label>
+        <input type="range" id="maxTokens" min="1" max="60" value="30">
+      </div>
+      <div class="field checkbox">
+        <label><input type="checkbox" id="quantize"> <span class="en">Run on int8 quantized weights</span><span class="ja">int8量子化した重みで実行</span></label>
+      </div>
+      <div class="row">
+        <button class="primary" id="genBtn" type="button"><span class="en">Generate</span><span class="ja">生成する</span></button>
+      </div>
+      <p class="hint"><span class="en">The model is stories15M (Andrej Karpathy's llama2.c project, trained on the TinyStories dataset) — a Llama-2-architecture model small enough to run token-by-token on a free-tier CPU. It only knows simple children's-story vocabulary; that's expected.</span><span class="ja">モデルはstories15M（Andrej Karpathy氏のllama2.cプロジェクト、TinyStoriesデータセットで学習）— 無料枠のCPUでも1トークンずつ実行できる小型のLlama-2アーキテクチャモデルです。語彙は簡単な童話レベルに限られますが、それは想定通りです。</span></p>
+    </div>
+
+    <div class="panel">
+      <h2><span class="en">Benchmark</span><span class="ja">ベンチマーク</span></h2>
+      <p class="hint" style="margin-top:0;"><span class="en">Runs the same prompt under five configurations and measures real tokens/sec — no cache, KV cache, KV cache + int8, and batch size 1 vs 3 concurrent sequences.</span><span class="ja">同じプロンプトを5種類の設定で実行し、実測のtokens/secを計測します — キャッシュなし、KVキャッシュあり、KVキャッシュ+int8、そしてバッチサイズ1 vs 3並列。</span></p>
+      <div class="row">
+        <button class="secondary" id="benchBtn" type="button"><span class="en">Run benchmark</span><span class="ja">ベンチマーク実行</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h2><span class="en">Output</span><span class="ja">出力</span></h2>
+      <div class="output" id="output"><span class="en" style="color:var(--muted);">Click "Generate" to start.</span><span class="ja" style="color:var(--muted);">「生成する」をクリックしてください。</span></div>
+      <div class="status-line">
+        <span id="genStatus"></span>
+        <span id="genStats"></span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2><span class="en">Tokens / sec by configuration</span><span class="ja">設定ごとのtokens/sec</span></h2>
+      <div id="benchBars">
+        <p class="hint" style="margin-top:0;"><span class="en">Run the benchmark to see results.</span><span class="ja">ベンチマークを実行すると結果が表示されます。</span></p>
+      </div>
+      <h2 style="margin-top:16px;"><span class="en">Weight memory: fp32 vs int8</span><span class="ja">重みのメモリ量：fp32 vs int8</span></h2>
+      <div class="mem-bars" id="memBars"></div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <span class="en">Source: <a href="https://github.com/shogohida/inferlab" target="_blank" rel="noopener">github.com/shogohida/inferlab</a> — part of <a href="https://shogo-hida-portfolio.pages.dev" target="_blank" rel="noopener">Shogo Hida's portfolio</a>.</span>
+  <span class="ja">ソース: <a href="https://github.com/shogohida/inferlab" target="_blank" rel="noopener">github.com/shogohida/inferlab</a> — <a href="https://shogo-hida-portfolio.pages.dev" target="_blank" rel="noopener">Shogo Hidaのポートフォリオ</a>の一部。</span>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

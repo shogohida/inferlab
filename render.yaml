@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: inferlab-demo
+    runtime: go
+    plan: free
+    buildCommand: >
+      mkdir -p weights &&
+      curl -fL -o weights/stories15M.bin https://huggingface.co/karpathy/tinyllamas/resolve/main/stories15M.bin &&
+      curl -fL -o weights/tokenizer.bin https://raw.githubusercontent.com/karpathy/llama2.c/master/tokenizer.bin &&
+      echo "cd590644d963867a2b6e5a1107f51fad663c41d79c149fbecbbb1f95fa81f49a  weights/stories15M.bin" | shasum -a 256 -c - &&
+      echo "50a52ef822ee9e83de5ce9d0be0a025a773d019437f58b5ff9dcafb063ece361  weights/tokenizer.bin" | shasum -a 256 -c - &&
+      go build -o bin/server ./cmd/server
+    startCommand: ./bin/server
